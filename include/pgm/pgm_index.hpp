@@ -20,6 +20,7 @@
 #include <utility>
 #include <algorithm>
 #include "piecewise_linear_model.hpp"
+#include "lru_cache.hpp"
 
 namespace pgm {
 
@@ -57,7 +58,7 @@ struct ApproxPos {
  * @tparam EpsilonRecursive controls the size of the search range in the internal structure
  * @tparam Floating the floating-point type to use for slopes
  */
-template<typename K, size_t Epsilon = 64, size_t EpsilonRecursive = 4, typename Floating = float>
+template<typename K, size_t Epsilon = 64, size_t EpsilonRecursive = 4, size_t CacheSize = 16, typename Floating = float>
 class PGMIndex {
 protected:
     template<typename, size_t, uint8_t, typename>
@@ -74,6 +75,7 @@ protected:
     std::vector<Segment> segments;      ///< The segments composing the index.
     std::vector<size_t> levels_sizes;   ///< The number of segment in each level, in reverse order.
     std::vector<size_t> levels_offsets; ///< The starting position of each level in segments[], in reverse order.
+    LRUCache cache;
 
     template<typename RandomIt>
     static void build(RandomIt first, RandomIt last,
@@ -186,7 +188,8 @@ public:
           first_key(n ? *first : 0),
           segments(),
           levels_sizes(),
-          levels_offsets() {
+          levels_offsets(),
+          cache(LRUCache(CacheSize)) {
         build(first, last, Epsilon, EpsilonRecursive, segments, levels_sizes, levels_offsets);
     }
 
@@ -196,9 +199,19 @@ public:
      * @return a struct with the approximate position and bounds of the range
      */
     ApproxPos search(const K &key) const {
-        auto k = std::max(first_key, key);
-        auto it = segment_for_key(k);
-        auto pos = std::min<size_t>((*it)(k), std::next(it)->intercept);
+        auto cache_res = cache.lookup(key);
+        auto pos = 0;
+        if(cache_res.second)
+        {
+            auto pos = cache_res.first;
+        }
+        else
+        {
+            auto k = std::max(first_key, key);
+            auto it = segment_for_key(k);
+            auto pos = std::min<size_t>((*it)(k), std::next(it)->intercept);
+        }
+        
         auto lo = PGM_SUB_EPS(pos, Epsilon);
         auto hi = PGM_ADD_EPS(pos, Epsilon, n);
         return {pos, lo, hi};
@@ -231,8 +244,8 @@ public:
 
 #pragma pack(push, 1)
 
-template<typename K, size_t Epsilon, size_t EpsilonRecursive, typename Floating>
-struct PGMIndex<K, Epsilon, EpsilonRecursive, Floating>::Segment {
+template<typename K, size_t Epsilon, size_t EpsilonRecursive, size_t CacheSize, typename Floating>
+struct PGMIndex<K, Epsilon, EpsilonRecursive, CacheSize, Floating>::Segment {
     K key;             ///< The first key that the segment indexes.
     Floating slope;    ///< The slope of the segment.
     int32_t intercept; ///< The intercept of the segment.
@@ -270,5 +283,4 @@ struct PGMIndex<K, Epsilon, EpsilonRecursive, Floating>::Segment {
 };
 
 #pragma pack(pop)
-
 }
