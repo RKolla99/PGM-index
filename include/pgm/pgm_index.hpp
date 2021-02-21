@@ -194,6 +194,14 @@ public:
     }
 
     /**
+     * Adds the new cache position
+     */
+    void add_cache_pos(const size_t &pos)
+    {
+        cache.add_pos(pos);
+    } 
+
+    /**
      * Returns the approximate position and the range where @p key can be found.
      * @param key the value of the element to search for
      * @return a struct with the approximate position and bounds of the range
